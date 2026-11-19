@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logic Sprinter</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70;
+    --line: #e2e0da; --accent: #3d5afe; --good: #1f9d55; --bad: #d64545;
+    --chip: #eef0ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121214; --panel: #1c1c20; --ink: #ececf0; --muted: #9a9aa3;
+      --line: #2c2c33; --accent: #7b8cff; --good: #3ecf7a; --bad: #ff6b6b; --chip: #262a45;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121214; --panel: #1c1c20; --ink: #ececf0; --muted: #9a9aa3;
+    --line: #2c2c33; --accent: #7b8cff; --good: #3ecf7a; --bad: #ff6b6b; --chip: #262a45;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh; display: flex; justify-content: center;
+  }
+  main { width: 100%; max-width: 640px; padding: 24px 16px 48px; }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px;
+  }
+  .hud { display: flex; gap: 8px; margin-bottom: 12px; }
+  .stat { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+  .stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 16px; }
+  .bar i { display: block; height: 100%; background: var(--accent); transition: width .2s linear; }
+  .tag { display: inline-block; font-size: 12px; background: var(--chip); color: var(--accent);
+         padding: 2px 8px; border-radius: 999px; margin-bottom: 10px; font-weight: 600; }
+  .prompt { font-size: 18px; white-space: pre-line; margin: 0 0 6px; }
+  .question { font-weight: 600; margin: 10px 0 16px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 20px; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button {
+    font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px; cursor: pointer; text-align: left;
+  }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .opts button kbd { color: var(--muted); font-size: 12px; margin-right: 8px; }
+  .opts button.right { border-color: var(--good); background: color-mix(in srgb, var(--good) 14%, var(--panel)); }
+  .opts button.wrong { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, var(--panel)); }
+  .primary { background: var(--accent); color: #fff; border: none; font-weight: 600; text-align: center; padding: 14px 20px; }
+  .primary:hover { filter: brightness(1.08); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .types { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin: 16px 0 20px; font-size: 14px; }
+  .types label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+  .flash { font-weight: 600; min-height: 24px; margin-top: 12px; }
+  .flash.good { color: var(--good); } .flash.bad { color: var(--bad); }
+  .review { margin-top: 20px; }
+  .review details { border-top: 1px solid var(--line); padding: 10px 0; }
+  .review summary { cursor: pointer; }
+  .review p { margin: 6px 0; color: var(--muted); white-space: pre-line; font-size: 14px; }
+  .big { font-size: 56px; font-weight: 700; letter-spacing: -0.03em; margin: 0; }
+  .hidden { display: none !important; }
+  @media (max-width: 420px) { .opts, .types { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Logic Sprinter</h1>
+  <p class="sub">60 seconds. Reason fast. No arithmetic required.</p>
+
+  <!-- Start screen -->
+  <section id="start" class="card">
+    <strong>Puzzle types</strong>
+    <div class="types" id="typeList"></div>
+    <div class="row">
+      <button class="primary" id="go">Start sprint</button>
+    </div>
+    <p class="sub" style="margin:16px 0 0;font-size:14px">
+      Correct: +1 point, +2s. Wrong: −3s. Streaks raise difficulty.
+      Keys <kbd>1</kbd>–<kbd>4</kbd> answer. Best: <b id="best">0</b>
+    </p>
+  </section>
+
+  <!-- Game screen -->
+  <section id="game" class="hidden">
+    <div class="hud">
+      <div class="stat"><span>Time</span><b id="time">60</b></div>
+      <div class="stat"><span>Score</span><b id="score">0</b></div>
+      <div class="stat"><span>Streak</span><b id="streak">0</b></div>
+    </div>
+    <div class="bar"><i id="bar" style="width:100%"></i></div>
+    <div class="card">
+      <span class="tag" id="qtype"></span>
+      <div class="prompt" id="prompt"></div>
+      <div class="question" id="question"></div>
+      <div class="opts" id="opts"></div>
+      <div class="flash" id="flash"></div>
+    </div>
+  </section>
+
+  <!-- Results -->
+  <section id="end" class="card hidden">
+    <span class="tag">Time's up</span>
+    <p class="big" id="final">0</p>
+    <p class="sub" id="summary"></p>
+    <div class="row"><button class="primary" id="again">Sprint again</button></div>
+    <div class="review" id="review"></div>
+  </section>
+</main>
+
+<script>
+// ---------- helpers ----------
+const rnd = n => Math.floor(Math.random() * n);
+const pick = a => a[rnd(a.length)];
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const sample = (a, k) => shuffle(a).slice(0, k);
+const NAMES = ["Ada", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jun"];
+const NONSENSE = ["blips", "zorks", "glims", "trovs", "wums", "pleks", "drans", "quibs", "snets", "vorns"];
+
+// ---------- generators ----------
+// Each returns { type, prompt, question, options, answer (index), explain }
+function mc(type, prompt, question, correct, wrongs, explain, keepOrder) {
+  const opts = keepOrder ? [correct, ...wrongs] : shuffle([correct, ...wrongs]);
+  if (keepOrder) opts.sort((a, b) => keepOrder.indexOf(a) - keepOrder.indexOf(b));
+  return { type, prompt, question, options: opts, answer: opts.indexOf(correct), explain };
+}
+
+// 1. Ordering / transitive relations
+function genOrdering(level) {
+  const n = Math.min(3 + Math.floor(level / 3), 5);
+  const people = sample(NAMES, n);              // people[0] is tallest
+  const rel = pick([["taller", "tallest", "shortest"], ["faster", "fastest", "slowest"], ["older", "oldest", "youngest"]]);
+  const comparative = rel[0];
+  // Each fact links neighbours in the chain, phrased one of two ways, in shuffled order.
+  const facts2 = shuffle(people.slice(0, -1).map((p, i) =>
+    Math.random() < .5 ? `${p} is ${comparative} than ${people[i + 1]}.`
+                       : `${people[i + 1]} is not as ${{taller:"tall",faster:"fast",older:"old"}[comparative]} as ${p}.`));
+  const askTop = Math.random() < .5;
+  let correct, question;
+  if (n >= 4 && Math.random() < .4) {
+    const i = rnd(n - 2), j = i + 1 + rnd(n - 1 - i);
+    const flip = Math.random() < .5;
+    question = flip ? `Is ${people[i]} ${comparative} than ${people[j]}?` : `Is ${people[j]} ${comparative} than ${people[i]}?`;
+    return mc("Ordering", facts2.join("\n"), question, flip ? "Yes" : "No", [flip ? "No" : "Yes", "Can't tell"],
+      `Chain: ${people.join(" > ")}. ${people[i]} is above ${people[j]}.`, ["Yes", "No", "Can't tell"]);
+  }
+  correct = askTop ? people[0] : people[n - 1];
+  question = `Who is the ${askTop ? rel[1] : rel[2]}?`;
+  const wrongs = sample(people.filter(p => p !== correct), Math.min(3, n - 1));
+  return mc("Ordering", facts2.join("\n"), question, correct, wrongs,
+    `Chain (most → least ${{taller:"tall",faster:"fast",older:"old"}[comparative]}): ${people.join(" > ")}.`);
+}
+
+// 2. Boolean expressions
+function genBoolean(level) {
+  const depth = Math.min(1 + Math.floor(level / 3), 3);
+  function build(d) {
+    if (d === 0) { const v = Math.random() < .5; return { s: v ? "T" : "F", v }; }
+    const r = Math.random();
+    if (r < .15) { const a = build(d - 1); return { s: `NOT ${a.s.length > 1 ? "(" + a.s + ")" : a.s}`, v: !a.v }; }
+    const op = pick(["AND", "OR", "XOR"]);
+    const a = build(d - 1);
+    const b = build(Math.max(0, d - 1 - (Math.random() < .5 ? 1 : 0)));
+    const wrap = x => x.s.length > 1 ? `(${x.s})` : x.s;
+    const v = op === "AND" ? a.v && b.v : op === "OR" ? a.v || b.v : a.v !== b.v;
+    return { s: `${wrap(a)} ${op} ${wrap(b)}`, v };
+  }
+  const e = build(depth);
+  const ans = e.v ? "True" : "False";
+  const q = mc("Boolean", "", "Evaluate (T = true, F = false):", ans, [e.v ? "False" : "True"],
+    `XOR is true when exactly one side is true. The expression evaluates to ${ans}.`, ["True", "False"]);
+  q.promptHTML = `<span class="mono">${e.s}</span>`;
+  return q;
+}
+
+// 3. Syllogisms (with nonsense words so world knowledge can't help)
+const SYLL = [
+  ["All A are B.", "All B are C.", "All A are C.", true],
+  ["All A are B.", "Some C are A.", "Some C are B.", true],
+  ["No A are B.", "All C are A.", "No C are B.", true],
+  ["All A are B.", "No C are B.", "No C are A.", true],
+  ["All A are B.", "No B are C.", "No A are C.", true],
+  ["Some A are B.", "All B are C.", "Some A are C.", true],
+  ["All A are B.", "Some B are C.", "Some A are C.", false],
+  ["All A are B.", "All C are B.", "All A are C.", false],
+  ["No A are B.", "No B are C.", "No A are C.", false],
+  ["Some A are B.", "Some B are C.", "Some A are C.", false],
+  ["All A are B.", "Some C are not A.", "Some C are not B.", false],
+  ["No A are B.", "Some C are B.", "Some C are not A.", true],
+];
+function genSyllogism() {
+  const [p1, p2, c, valid] = pick(SYLL);
+  const [A, B, C] = sample(NONSENSE, 3);
+  const sub = s => s.replace(/\bA\b/g, A).replace(/\bB\b/g, B).replace(/\bC\b/g, C);
+  return mc("Syllogism", `${sub(p1)}\n${sub(p2)}`, `Does it follow that: ${sub(c)}`,
+    valid ? "Must be true" : "Not necessarily", [valid ? "Not necessarily" : "Must be true"],
+    valid ? "The conclusion is forced by the premises in every possible arrangement."
+          : "There's a consistent arrangement where both premises hold but the conclusion fails.",
+    ["Must be true", "Not necessarily"]);
+}
+
+// 4. Conditional reasoning
+const COND = [
+  ["P", "Q", "Q", true, "Modus ponens: P → Q and P give Q."],
+  ["¬Q", "¬P", "¬P", true, "Modus tollens: if Q is false, P can't be true."],
+  ["Q", "P", "P", false, "Affirming the consequent: Q could be true for another reason."],
+  ["¬P", "¬Q", "¬Q", false, "Denying the antecedent: Q could still be true without P."],
+];
+const SCEN = [
+  ["the alarm rings", "the dog barks"], ["the light is green", "the gate is open"],
+  ["Mira studies", "Mira passes"], ["the switch is on", "the fan spins"],
+  ["it is a zork", "it glows"], ["the code compiles", "the test runs"],
+];
+function genConditional() {
+  const [given, , concl, valid, why] = pick(COND);
+  const [p, q] = pick(SCEN);
+  const neg = s => "it is not the case that " + s;
+  const say = x => x === "P" ? p : x === "Q" ? q : x === "¬P" ? neg(p) : neg(q);
+  const cap = s => s[0].toUpperCase() + s.slice(1);
+  return mc("If–then", `If ${p}, then ${q}.\n${cap(say(given))}.`,
+    `Can we conclude: ${say(concl)}?`, valid ? "Yes" : "No", [valid ? "No" : "Yes"], why, ["Yes", "No"]);
+}
+
+// 5. Knights & knaves (brute-forced to guarantee a unique solution)
+function genKnights() {
+  const [A, B] = sample(NAMES, 2);
+  const stmts = [
+    { t: o => `${o} is a liar.`, f: (me, o) => !o },
+    { t: o => `${o} tells the truth.`, f: (me, o) => o },
+    { t: () => `We are both liars.`, f: (me, o) => !me && !o },
+    { t: () => `We are both truth-tellers.`, f: (me, o) => me && o },
+    { t: () => `Exactly one of us is a liar.`, f: (me, o) => me !== o },
+    { t: () => `At least one of us is a liar.`, f: (me, o) => !me || !o },
+    { t: () => `We are the same type.`, f: (me, o) => me === o },
+  ];
+  for (let tries = 0; tries < 200; tries++) {
+    const sa = pick(stmts), sb = Math.random() < .5 ? null : pick(stmts);
+    const sols = [];
+    for (const a of [true, false]) for (const b of [true, false]) {
+      if (sa.f(a, b) !== a) continue;
+      if (sb && sb.f(b, a) !== b) continue;
+      sols.push([a, b]);
+    }
+    if (sols.length !== 1) continue;
+    const [a, b] = sols[0];
+    const label = a && b ? "Both honest" : a ? `Only ${A}` : b ? `Only ${B}` : "Both liars";
+    const all = ["Both honest", `Only ${A}`, `Only ${B}`, "Both liars"];
+    return mc("Truth & lies",
+      `Each person always tells the truth or always lies.\n${A}: “${sa.t(B)}”` + (sb ? `\n${B}: “${sb.t(A)}”` : ""),
+      "Who tells the truth?", label, all.filter(x => x !== label),
+      `Only one assignment is consistent: ${A} is ${a ? "honest" : "a liar"}, ${B} is ${b ? "honest" : "a liar"}.`, all);
+  }
+  return genConditional();
+}
+
+// 6. Visual patterns (rotation / alternation, no numbers)
+function genPattern(level) {
+  const kinds = [
+    () => { const s = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"]; const st = rnd(8), step = pick([1, 2, 3]) * (Math.random() < .5 ? 1 : -1);
+            const seq = [0, 1, 2, 3].map(i => s[((st + step * i) % 8 + 8) % 8]); const ans = s[((st + step * 4) % 8 + 8) % 8];
+            return [seq, ans, s, "The arrow rotates by the same amount each step."]; },
+    () => { const pool = ["●", "■", "▲", "◆", "★"]; const [x, y, z] = sample(pool, 3); const cycle = level > 3 ? [x, y, z] : [x, y];
+            const seq = Array.from({ length: 5 }, (_, i) => cycle[i % cycle.length]); const ans = cycle[5 % cycle.length];
+            return [seq, ans, pool, `The shapes repeat in a cycle of ${cycle.length}.`]; },
+    () => { const pool = ["○", "◔", "◑", "◕", "●"]; const up = Math.random() < .5; const ord = up ? pool : pool.slice().reverse();
+            const seq = [...ord.slice(0, 4)]; const ans = ord[4]; return [seq, ans, pool, "The circle fills (or empties) one quarter at a time."]; },
+    () => { const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; const a = rnd(6), b = 12 + rnd(8);
+            const seq = [L[a], L[b], L[a + 1], L[b + 1], L[a + 2]]; const ans = L[b + 2];
+            return [seq, ans, L.split("").slice(a, b + 5), "Two interleaved alphabetical runs."]; },
+  ];
+  const [seq, ans, pool, why] = pick(kinds)();
+  const wrongs = sample(pool.filter(x => x !== ans), 3);
+  const q = mc("Pattern", "", "What comes next?", ans, wrongs, why);
+  q.promptHTML = `<span class="mono">${seq.join("  ")}  ?</span>`;
+  return q;
+}
+
+const TYPES = {
+  ordering: ["Ordering", genOrdering],
+  boolean: ["Boolean logic", genBoolean],
+  syllogism: ["Syllogisms", genSyllogism],
+  conditional: ["If–then", genConditional],
+  knights: ["Truth & lies", genKnights],
+  pattern: ["Patterns", genPattern],
+};
+
+// ---------- game ----------
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const DURATION = 60;
+let S = null, timer = null;
+
+const enabled = store.get("ls-types", Object.keys(TYPES));
+$("typeList").innerHTML = Object.entries(TYPES).map(([k, [label]]) =>
+  `<label><input type="checkbox" value="${k}" ${enabled.includes(k) ? "checked" : ""}> ${label}</label>`).join("");
+$("best").textContent = store.get("ls-best", 0);
+
+function chosenTypes() {
+  const t = [...document.querySelectorAll("#typeList input:checked")].map(i => i.value);
+  return t.length ? t : Object.keys(TYPES);
+}
+
+function start() {
+  const types = chosenTypes(); store.set("ls-types", types);
+  S = { types, score: 0, streak: 0, time: DURATION, level: 0, answered: 0, log: [], locked: false };
+  $("start").classList.add("hidden"); $("end").classList.add("hidden"); $("game").classList.remove("hidden");
+  next(); tick();
+  clearInterval(timer); timer = setInterval(tick, 1000);
+}
+
+function tick() {
+  $("time").textContent = Math.max(0, S.time);
+  $("bar").style.width = Math.min(100, S.time / DURATION * 100) + "%";
+  if (S.time <= 0) return finish();
+  S.time--;
+}
+
+function next() {
+  const q = TYPES[pick(S.types)][1](S.level);
+  S.q = q; S.locked = false;
+  $("qtype").textContent = q.type;
+  if (q.promptHTML) $("prompt").innerHTML = q.promptHTML; else $("prompt").textContent = q.prompt;
+  $("question").textContent = q.question;
+  $("opts").innerHTML = "";
+  q.options.forEach((o, i) => {
+    const b = document.createElement("button");
+    b.innerHTML = `<kbd>${i + 1}</kbd>`; b.append(o);
+    b.onclick = () => answer(i);
+    $("opts").append(b);
+  });
+  $("score").textContent = S.score; $("streak").textContent = S.streak;
+}
+
+function answer(i) {
+  if (!S || S.locked || S.time < 0) return;
+  S.locked = true;
+  const q = S.q, ok = i === q.answer, btns = $("opts").children;
+  btns[q.answer].classList.add("right");
+  if (!ok) btns[i].classList.add("wrong");
+  S.answered++;
+  if (ok) { S.score++; S.streak++; S.time += 2; if (S.streak % 3 === 0) S.level++; }
+  else { S.streak = 0; S.time -= 3; S.level = Math.max(0, S.level - 1);
+         S.log.push({ q, picked: q.options[i] }); }
+  $("flash").textContent = ok ? "Correct +2s" : "Wrong −3s";
+  $("flash").className = "flash " + (ok ? "good" : "bad");
+  $("time").textContent = Math.max(0, S.time);
+  setTimeout(() => { $("flash").textContent = ""; if (S.time > 0) next(); else finish(); }, ok ? 350 : 1100);
+}
+
+function finish() {
+  if (!S || S.done) return;
+  S.done = true; clearInterval(timer);
+  const best = Math.max(store.get("ls-best", 0), S.score); store.set("ls-best", best);
+  $("best").textContent = best;
+  $("game").classList.add("hidden"); $("end").classList.remove("hidden");
+  $("final").textContent = S.score;
+  const acc = S.answered ? Math.round(S.score / S.answered * 100) : 0;
+  $("summary").textContent = `${S.answered} answered · ${acc}% accuracy · best ${best}`;
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  $("review").innerHTML = S.log.length
+    ? "<strong>Review your misses</strong>" + S.log.map(({ q, picked }) => `
+      <details><summary>${esc(q.type)}: ${esc(q.question)}</summary>
+        ${q.promptHTML ? `<p>${q.promptHTML}</p>` : `<p>${esc(q.prompt)}</p>`}
+        <p>You chose <b>${esc(picked)}</b>; answer: <b>${esc(q.options[q.answer])}</b></p>
+        <p>${esc(q.explain)}</p></details>`).join("")
+    : "<p class='sub'>No mistakes. Clean run.</p>";
+}
+
+document.addEventListener("keydown", e => {
+  if (!S || S.done || $("game").classList.contains("hidden")) {
+    if (e.key === "Enter" && !$("start").classList.contains("hidden")) start();
+    return;
+  }
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= S.q.options.length) answer(n - 1);
+});
+$("go").onclick = start;
+$("again").onclick = () => { $("end").classList.add("hidden"); $("start").classList.remove("hidden"); S = null; };
+</script>
+</body>
+</html>
