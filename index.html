@@ -104,7 +104,8 @@
   /* phones: a short sea strip so the question and all answers fit on one screen without scrolling */
   @media (max-width: 720px) {
     #v-play { margin-top: -16px; }
-    .sea { height: 168px; } .sea .diver-wrap { top: 6px; width: 34px; margin-left: -17px; }
+    .sea { height: 140px; } .sea .diver-wrap { top: 4px; width: 32px; margin-left: -16px; }
+    .side { gap: 8px; } .topbar { padding: 0 6px 0 12px; }
     .gauge { padding: 6px 10px; } .gauge .d { font-size: 20px; }
   }
   .rays { position: absolute; inset: 0; background: repeating-linear-gradient(105deg, rgba(255,255,255,.10) 0 18px, transparent 18px 60px); mask: linear-gradient(180deg, #000 0%, transparent 75%); transition: opacity .8s; pointer-events: none; }
@@ -154,7 +155,7 @@
   .quit { background: none; border: 0; color: var(--muted); font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 10px; }
   .quit:hover { color: var(--bad); background: var(--bad-soft); }
   .qcard { text-align: center; gap: 18px; min-height: 360px; justify-content: center; }
-  @media (max-width: 720px) { .qcard { min-height: 0; gap: 12px; padding: 16px; } .premise { font-size: 16px; } .hint { display: none; } }
+  @media (max-width: 720px) { .qcard { min-height: 0; gap: 10px; padding: 14px; } .premise { font-size: 16px; } .hint { display: none; } }
   .qtype { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--faint); }
   .premise { font-size: 17px; font-weight: 500; white-space: pre-line; color: var(--ink-2); margin: 0; }
   .premise.sym { font-family: var(--mono); font-size: clamp(22px, 5.5vw, 32px); font-weight: 700; color: var(--ink); }
@@ -366,7 +367,7 @@ const pick = a => a[rnd(a.length)];
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const sample = (a, k) => shuffle(a).slice(0, k);
 const NAMES = ["Ada", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivo", "Jun"];
-const NONSENSE = ["blips", "zorks", "glims", "trovs", "wums", "pleks", "drans", "quibs", "snets", "vorns"];
+const cap = s => s[0].toUpperCase() + s.slice(1);
 
 function mc(type, premise, ask, correct, wrongs, explain, order) {
   let opts = [correct, ...wrongs];
@@ -375,95 +376,99 @@ function mc(type, premise, ask, correct, wrongs, explain, order) {
 }
 
 // ================= puzzle generators =================
+// Everyday wording, no symbols to decode. Levels: 0-2 easy, 3-5 medium, 6+ hard.
 function genOrdering(level) {
   const n = Math.min(3 + Math.floor(level / 3), 5);
   const people = sample(NAMES, n);   // people[0] ranks highest
   const [cmp, adj, top, bottom] = pick([["taller", "tall", "tallest", "shortest"], ["faster", "fast", "fastest", "slowest"], ["older", "old", "oldest", "youngest"]]);
-  const facts = shuffle(people.slice(0, -1).map((p, i) =>
-    rand() < .5 ? `${p} is ${cmp} than ${people[i + 1]}.` : `${people[i + 1]} is not as ${adj} as ${p}.`)).join("\n");
-  const chain = `Chain: ${people.join(" > ")}.`;
+  const facts = shuffle(people.slice(0, -1).map((p, i) =>   // "not as … as" only from medium up
+    level >= 3 && rand() < .4 ? `${people[i + 1]} is not as ${adj} as ${p}.` : `${p} is ${cmp} than ${people[i + 1]}.`)).join("\n");
+  const chain = `From ${top} to ${bottom}: ${people.join(", ")}.`;
   if (n >= 4 && rand() < .4) {
     const i = rnd(n - 2), j = i + 1 + rnd(n - 1 - i), yes = rand() < .5;
     const ask = yes ? `Is ${people[i]} ${cmp} than ${people[j]}?` : `Is ${people[j]} ${cmp} than ${people[i]}?`;
-    return mc("Ordering", facts, ask, yes ? "Yes" : "No", [yes ? "No" : "Yes", "Can't tell"], chain, ["Yes", "No", "Can't tell"]);
+    return mc("Ranking", facts, ask, yes ? "Yes" : "No", [yes ? "No" : "Yes", "Can't tell"], chain, ["Yes", "No", "Can't tell"]);
   }
   const askTop = rand() < .5, correct = askTop ? people[0] : people[n - 1];
-  return mc("Ordering", facts, `Who is the ${askTop ? top : bottom}?`, correct,
+  return mc("Ranking", facts, `Who is the ${askTop ? top : bottom}?`, correct,
     sample(people.filter(p => p !== correct), Math.min(3, n - 1)), chain);
 }
 
+const THINGS = [["☀️", "Sunny"], ["🥶", "Cold"], ["🐶", "Dog at home"], ["🍕", "Pizza left"], ["📺", "TV on"], ["🚪", "Door open"]];
 function genBoolean(level) {
-  const depth = Math.min(1 + Math.floor(level / 3), 3);
-  const wrap = x => x.s.length > 1 ? `(${x.s})` : x.s;
-  function build(d) {
-    if (d === 0) { const v = rand() < .5; return { s: v ? "T" : "F", v }; }
-    if (rand() < .15) { const a = build(d - 1); return { s: `NOT ${wrap(a)}`, v: !a.v }; }
-    const op = pick(["AND", "OR", "XOR"]);
-    const a = build(d - 1), b = build(Math.max(0, d - 1 - (rand() < .5 ? 1 : 0)));
-    return { s: `${wrap(a)} ${op} ${wrap(b)}`, v: op === "AND" ? a.v && b.v : op === "OR" ? a.v || b.v : a.v !== b.v };
-  }
-  const e = build(depth), ans = e.v ? "True" : "False";
-  const q = mc("Boolean logic", e.s, "True or false?", ans, [e.v ? "False" : "True"],
-    `T = true, F = false. XOR is true when exactly one side is true. It evaluates to ${ans}.`, ["True", "False"]);
-  q.sym = true;
-  return q;
+  const items = sample(THINGS, level >= 6 ? 3 : 2).map(([e, name]) => ({ e, name, v: rand() < .5 }));
+  const lit = it => level >= 3 && rand() < .35 ? { s: `NOT ${it.e}`, v: !it.v } : { s: it.e, v: it.v };
+  const join = (a, b) => { const op = pick(["AND", "OR"]); return { s: `${a.s} ${op} ${b.s}`, v: op === "AND" ? a.v && b.v : a.v || b.v }; };
+  let e = join(lit(items[0]), lit(items[1]));
+  if (items[2]) e = join({ s: `(${e.s})`, v: e.v }, lit(items[2]));
+  const ans = e.v ? "True" : "False", rules = [];
+  if (e.s.includes("AND")) rules.push("AND needs both sides");
+  if (e.s.includes("OR")) rules.push("OR needs at least one");
+  if (e.s.includes("NOT")) rules.push("NOT flips yes and no");
+  return mc("True or false", items.map(it => `${it.e} ${it.name}: ${it.v ? "yes" : "no"}`).join("\n"),
+    `Is “${e.s}” true?`, ans, [e.v ? "False" : "True"], `${rules.join(", ")}. So it's ${ans.toLowerCase()}.`, ["True", "False"]);
 }
 
+const GROUPS = ["singers", "dancers", "runners", "painters", "swimmers", "chess players", "bakers", "gamers"];
+const SAY = { all: (x, y) => `All the ${x} are ${y}.`, some: (x, y) => `Some of the ${x} are ${y}.`,
+              no: (x, y) => `None of the ${x} are ${y}.`, not: (x, y) => `Some of the ${x} aren't ${y}.` };
+// [first fact, second fact, claim, must be true?, why, easy?]
 const SYLL = [
-  ["All A are B.", "All B are C.", "All A are C.", true],
-  ["All A are B.", "Some C are A.", "Some C are B.", true],
-  ["No A are B.", "All C are A.", "No C are B.", true],
-  ["All A are B.", "No C are B.", "No C are A.", true],
-  ["All A are B.", "No B are C.", "No A are C.", true],
-  ["Some A are B.", "All B are C.", "Some A are C.", true],
-  ["No A are B.", "Some C are B.", "Some C are not A.", true],
-  ["All A are B.", "Some B are C.", "Some A are C.", false],
-  ["All A are B.", "All C are B.", "All A are C.", false],
-  ["No A are B.", "No B are C.", "No A are C.", false],
-  ["Some A are B.", "Some B are C.", "Some A are C.", false],
-  ["All A are B.", "Some C are not A.", "Some C are not B.", false],
+  [["all", "A", "B"], ["all", "B", "C"], ["all", "A", "C"], true, "The {A} are all {B}, and the {B} are all {C}.", 1],
+  [["all", "A", "B"], ["some", "C", "A"], ["some", "C", "B"], true, "The {C} who are {A} are also {B}."],
+  [["no", "A", "B"], ["all", "C", "A"], ["no", "C", "B"], true, "The {C} are all {A}, and none of the {A} are {B}."],
+  [["all", "A", "B"], ["no", "C", "B"], ["no", "C", "A"], true, "The {A} are all {B}. The {C} aren't {B}, so they can't be {A}."],
+  [["all", "A", "B"], ["no", "B", "C"], ["no", "A", "C"], true, "The {A} are all {B}, and none of the {B} are {C}.", 1],
+  [["some", "A", "B"], ["all", "B", "C"], ["some", "A", "C"], true, "The {A} who are {B} are also {C}."],
+  [["no", "A", "B"], ["some", "C", "B"], ["not", "C", "A"], true, "The {C} who are {B} can't be {A}."],
+  [["all", "A", "B"], ["some", "B", "C"], ["some", "A", "C"], false, "The {B} who are {C} might not include any of the {A}.", 1],
+  [["all", "A", "B"], ["all", "C", "B"], ["all", "A", "C"], false, "The {A} and the {C} could be two separate groups among the {B}.", 1],
+  [["no", "A", "B"], ["no", "B", "C"], ["no", "A", "C"], false, "Both facts are about the {B}. The {A} and the {C} could still overlap."],
+  [["some", "A", "B"], ["some", "B", "C"], ["some", "A", "C"], false, "The two facts could be about different {B}."],
+  [["all", "A", "B"], ["not", "C", "A"], ["not", "C", "B"], false, "Those {C} could still be {B} without being {A}."],
 ];
-function genSyllogism() {
-  const [p1, p2, c, valid] = pick(SYLL);
-  const [A, B, C] = sample(NONSENSE, 3);
-  const sub = s => s.replace(/\bA\b/g, A).replace(/\bB\b/g, B).replace(/\bC\b/g, C);
-  return mc("Syllogism", `${sub(p1)}\n${sub(p2)}`, `So: “${sub(c)}”?`,
-    valid ? "Must be true" : "Not necessarily", [valid ? "Not necessarily" : "Must be true"],
-    valid ? "The conclusion holds in every arrangement that fits both premises."
-          : "Both premises can be true while the conclusion is false.", ["Must be true", "Not necessarily"]);
+function genSyllogism(level) {
+  const [p1, p2, c, valid, why] = pick(level < 3 ? SYLL.filter(s => s[5]) : SYLL);
+  const [A, B, C] = sample(GROUPS, 3), names = { A, B, C };
+  const say = ([f, x, y]) => SAY[f](names[x], names[y]);
+  return mc("All & some", `In this club:\n${say(p1)}\n${say(p2)}`, `Does that mean: “${say(c).slice(0, -1)}”?`,
+    valid ? "Yes, for sure" : "Not for sure", [valid ? "Not for sure" : "Yes, for sure"],
+    why.replace(/\{(\w)\}/g, (_, k) => names[k]), ["Yes, for sure", "Not for sure"]);
 }
 
+// [what we're told, what we're asked, follows?, why]
 const COND = [
-  ["P", "Q", true, "Modus ponens: P → Q and P give Q."],
-  ["¬Q", "¬P", true, "Modus tollens: if Q is false, P can't be true."],
-  ["Q", "P", false, "Affirming the consequent: Q could be true for another reason."],
-  ["¬P", "¬Q", false, "Denying the antecedent: Q could still be true without P."],
+  ["p", "q", true, "The rule says that whenever {p}, {q}."],
+  ["q", "p", false, "Something else could cause that. The rule only says what follows when {p}."],
+  ["nq", "np", true, "If {p}, {q}. But {nq}, so {np}."],
+  ["np", "nq", false, "The rule says nothing about what happens when {np}. {Q} could still happen."],
 ];
 const SCEN = [
-  ["the alarm rings", "the dog barks"], ["the light is green", "the gate is open"],
-  ["Mira studies", "Mira passes"], ["the switch is on", "the fan spins"],
-  ["it is a zork", "it glows"], ["the code compiles", "the test runs"],
+  ["it rains", "it doesn't rain", "the street gets wet", "the street isn't wet"],
+  ["Sam's alarm rings", "Sam's alarm doesn't ring", "Sam wakes up", "Sam doesn't wake up"],
+  ["you press the button", "you don't press the button", "the door opens", "the door doesn't open"],
+  ["the cat is hungry", "the cat isn't hungry", "it meows", "it doesn't meow"],
+  ["Mia finishes her homework", "Mia doesn't finish her homework", "she plays games", "she doesn't play games"],
+  ["the shop is open", "the shop isn't open", "the lights are on", "the lights aren't on"],
 ];
-function genConditional() {
-  const [given, concl, valid, why] = pick(COND);
-  const [p, q] = pick(SCEN);
-  const say = x => ({ P: p, Q: q, "¬P": `it's not true that ${p}`, "¬Q": `it's not true that ${q}` })[x];
-  const cap = s => s[0].toUpperCase() + s.slice(1);
-  return mc("If–then", `If ${p}, then ${q}.\n${cap(say(given))}.`, `Can we conclude ${say(concl)}?`,
-    valid ? "Yes" : "No", [valid ? "No" : "Yes"], why, ["Yes", "No"]);
+function genConditional(level) {
+  const [given, concl, valid, why] = pick(level < 3 ? COND.slice(0, 2) : COND);   // easy: no negatives
+  const [p, np, q, nq] = pick(SCEN), w = { p, np, q, nq, Q: cap(q) };
+  return mc("If–then", `Rule: if ${p}, then ${q}.\nToday, ${w[given]}.`, `Does that mean ${w[concl]}?`,
+    valid ? "Yes" : "Can't tell", [valid ? "Can't tell" : "Yes"], why.replace(/\{(\w+)\}/g, (_, k) => w[k]), ["Yes", "Can't tell"]);
 }
 
-function genKnights() {
+function genKnights(level) {
   const [A, B] = sample(NAMES, 2);
   const stmts = [
     { t: o => `${o} is a liar.`, f: (me, o) => !o },
     { t: o => `${o} tells the truth.`, f: (me, o) => o },
     { t: () => `We are both liars.`, f: (me, o) => !me && !o },
-    { t: () => `We are both truth-tellers.`, f: (me, o) => me && o },
-    { t: () => `Exactly one of us is a liar.`, f: (me, o) => me !== o },
+    { t: () => `We both tell the truth.`, f: (me, o) => me && o },
     { t: () => `At least one of us is a liar.`, f: (me, o) => !me || !o },
-    { t: () => `We are the same type.`, f: (me, o) => me === o },
-  ];
+    { t: () => `Exactly one of us is a liar.`, f: (me, o) => me !== o, hard: 1 },
+    { t: () => `We are the same type.`, f: (me, o) => me === o, hard: 1 },
+  ].filter(s => level >= 3 || !s.hard);
   for (let tries = 0; tries < 200; tries++) {
     const sa = pick(stmts), sb = rand() < .5 ? null : pick(stmts);
     const sols = [];
@@ -471,45 +476,48 @@ function genKnights() {
       if (sa.f(a, b) === a && (!sb || sb.f(b, a) === b)) sols.push([a, b]);
     if (sols.length !== 1) continue;
     const [a, b] = sols[0];
-    const all = ["Both honest", `Only ${A}`, `Only ${B}`, "Both liars"];
+    const all = ["Both", `Only ${A}`, `Only ${B}`, "Neither"];
     const label = a && b ? all[0] : a ? all[1] : b ? all[2] : all[3];
     return mc("Truth & lies",
-      `Everyone always lies or always tells the truth.\n${A}: “${sa.t(B)}”` + (sb ? `\n${B}: “${sb.t(A)}”` : ""),
+      `On Liar Island, each person always tells the truth or always lies.\n${A} says: “${sa.t(B)}”` + (sb ? `\n${B} says: “${sb.t(A)}”` : ""),
       "Who tells the truth?", label, all.filter(x => x !== label),
-      `Only one assignment is consistent: ${A} is ${a ? "honest" : "a liar"}, ${B} is ${b ? "honest" : "a liar"}.`, all);
+      `Try each answer: only one fits. ${a === b ? `${A} and ${B} both ${a ? "tell the truth" : "lie"}` : `${a ? A : B} tells the truth and ${a ? B : A} lies`}.`, all);
   }
-  return genConditional();
+  return genConditional(level);
 }
 
 function genPattern(level) {
   const kinds = [
-    () => { const s = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"], st = rnd(8), step = pick([1, 2, 3]) * (rand() < .5 ? 1 : -1);
+    () => { const st = 1 + rnd(9), step = 2 + rnd(level >= 3 ? 6 : 3), ans = st + step * 4;
+            return [[0, 1, 2, 3].map(i => st + step * i), ans, [ans - step, ans + step, ans + 1, ans - 1, ans + 2], `It goes up by ${step} each time.`]; },
+    () => { const s = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"], st = rnd(8), step = pick(level >= 3 ? [1, 2, 3] : [1, 2]) * (rand() < .5 ? 1 : -1);
             const at = i => s[((st + step * i) % 8 + 8) % 8];
-            return [[0, 1, 2, 3].map(at), at(4), s, "The arrow turns by the same amount each step."]; },
-    () => { const pool = ["●", "■", "▲", "◆", "★"], [x, y, z] = sample(pool, 3), cyc = level > 3 ? [x, y, z] : [x, y];
-            return [[0, 1, 2, 3, 4].map(i => cyc[i % cyc.length]), cyc[5 % cyc.length], pool, `The shapes repeat in a cycle of ${cyc.length}.`]; },
+            return [[0, 1, 2, 3].map(at), at(4), s, "The arrow turns the same amount each step."]; },
+    () => { const pool = ["●", "■", "▲", "◆", "★"], [x, y, z] = sample(pool, 3), cyc = level >= 3 ? [x, y, z] : [x, y];
+            return [[0, 1, 2, 3, 4].map(i => cyc[i % cyc.length]), cyc[5 % cyc.length], pool, `The shapes repeat every ${cyc.length}.`]; },
     () => { const pool = ["○", "◔", "◑", "◕", "●"], ord = rand() < .5 ? pool : pool.slice().reverse();
             return [ord.slice(0, 4), ord[4], pool, "The circle fills or empties a quarter at a time."]; },
-    () => { const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ", a = rnd(6), b = 12 + rnd(8);
-            return [[L[a], L[b], L[a + 1], L[b + 1], L[a + 2]], L[b + 2], L.split("").slice(a, b + 5), "Two alphabetical runs, interleaved."]; },
+    () => { const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ", a = rnd(6), b = 12 + rnd(8);   // medium and up only
+            return [[L[a], L[b], L[a + 1], L[b + 1], L[a + 2]], L[b + 2], L.split("").slice(a, b + 5), "Two alphabet runs take turns."]; },
   ];
-  const [seq, ans, pool, why] = pick(kinds)();
-  const q = mc("Pattern", seq.join("  ") + "  ?", "What comes next?", ans, sample(pool.filter(x => x !== ans), 3), why);
+  const [seq, ans, pool, why] = pick(level >= 3 ? kinds : kinds.slice(0, 4))();
+  const q = mc("Pattern", seq.join("  ") + "  ?", "What comes next?", String(ans),
+    sample([...new Set(pool.map(String))].filter(x => x !== String(ans)), 3), why);
   q.sym = true;
   return q;
 }
 
 const TYPES = {
-  mixed:       { label: "Mixed",        icon: "✦" },
-  syllogism:   { label: "Syllogisms",   icon: "∴", gen: genSyllogism },
-  conditional: { label: "If–then",      icon: "⇒", gen: genConditional },
-  knights:     { label: "Truth & lies", icon: "?", gen: genKnights },
-  boolean:     { label: "Boolean",      icon: "∧", gen: genBoolean },
-  ordering:    { label: "Ordering",     icon: "≻", gen: genOrdering },
-  pattern:     { label: "Patterns",     icon: "◑", gen: genPattern },
+  mixed:       { label: "Mixed",         icon: "✦" },
+  syllogism:   { label: "All & some",    icon: "◎", gen: genSyllogism },
+  conditional: { label: "If–then",       icon: "⇒", gen: genConditional },
+  knights:     { label: "Truth & lies",  icon: "?", gen: genKnights },
+  boolean:     { label: "True or false", icon: "✓", gen: genBoolean },
+  ordering:    { label: "Ranking",       icon: "↕", gen: genOrdering },
+  pattern:     { label: "Patterns",      icon: "◑", gen: genPattern },
 };
 const REAL = Object.keys(TYPES).filter(k => k !== "mixed");
-const DIFFS = [["Warmup", "Short & simple", 0], ["Standard", "Longer chains", 3], ["Expert", "Deep nesting", 6]];
+const DIFFS = [["Easy", "Gentle start", 0], ["Medium", "A bit trickier", 3], ["Hard", "Brain burner", 6]];
 
 
 // ================= storage =================
