@@ -811,6 +811,9 @@ function renderResult(rec, run) {
   $("r-streak-num").textContent = `${st} day${st === 1 ? "" : "s"}`;
   $("r-streak-text").textContent = st > 1 ? "Keep diving every day" : "Streak started. Dive again tomorrow";
   $("r-share").hidden = $("r-remind").hidden = !daily;
+  $("r-share").textContent = navigator.share ? "Share result" : "Copy result";
+  shareFile = null;   // drawn now, so a tap can open the share sheet straight away (iOS needs that)
+  if (daily && navigator.share) resultImage(rec).then(f => shareFile = f, () => {});
   $("r-next").textContent = daily ? "Practice dive" : "Back to the boat";
   $("r-toast").textContent = "";
   const misses = run ? run.qs.map((q, i) => ({ q, r: run.results[i] })).filter(x => x.r && !x.r.ok) : [];
@@ -833,12 +836,41 @@ function renderResult(rec, run) {
   requestAnimationFrame(step);
 }
 
+// ================= sharing =================
+// Phones (iOS and Android) get the system share sheet with a picture of the result; elsewhere the text is copied.
+let shareFile = null;
+async function resultImage(rec) {
+  await document.fonts.ready;
+  const c = document.createElement("canvas"), x = c.getContext("2d"), W = 1080;
+  c.width = c.height = W;
+  const g = x.createLinearGradient(0, 0, 0, W);
+  g.addColorStop(0, "#1aa0c4"); g.addColorStop(.45, "#0d5f8c"); g.addColorStop(1, "#03101c");
+  x.fillStyle = g; x.fillRect(0, 0, W, W);
+  x.textAlign = "center";
+  const line = (t, font, color, y) => { x.font = font; x.fillStyle = color; x.fillText(t, W / 2, y); };
+  line(`Logic Sprinter · Daily #${dayNumber()}`, "700 50px Sora, sans-serif", "#e8f5ff", 150);
+  line("I dived to", "600 46px Inter, sans-serif", "#c3dcef", 330);
+  line(metres(rec.depth), "800 190px Sora, sans-serif", "#ffffff", 520);
+  line(zoneOf(rec.depth).toUpperCase(), "800 46px Inter, sans-serif", "#3fe0c8", 610);
+  line(rec.marks.map(m => SQ[m]).join(""), "72px sans-serif", "#ffffff", 760);
+  line(`${rec.correct}/10 solved in ${fmt(rec.time)}`, "600 46px Inter, sans-serif", "#c3dcef", 860);
+  line("How deep can you reason?", "700 40px Sora, sans-serif", "#86a9c2", 1000);
+  const blob = await new Promise(r => c.toBlob(r, "image/png"));
+  return new File([blob], `logic-sprinter-${dayNumber()}.png`, { type: "image/png" });
+}
 $("r-share").onclick = async () => {
   const rec = load().days[dayKey()];
   if (!rec) return;
+  const url = location.href.split("#")[0];
   const text = `🤿 LogicSprinter #${dayNumber()}: ${metres(rec.depth)} (${zoneOf(rec.depth)})\n${rec.marks.map(m => SQ[m]).join("")}\n${rec.correct}/10 in ${fmt(rec.time)}`;
-  try { await navigator.clipboard.writeText(text); $("r-toast").textContent = "Copied. Paste it anywhere."; }
-  catch { $("r-toast").textContent = text; }
+  if (navigator.share) {
+    const data = { title: "Logic Sprinter", text, url };
+    if (shareFile && navigator.canShare?.({ files: [shareFile] })) data.files = [shareFile];
+    try { await navigator.share(data); return; }
+    catch (e) { if (e.name === "AbortError") return; }   // closing the sheet is not an error
+  }
+  try { await navigator.clipboard.writeText(`${text}\n${url}`); $("r-toast").textContent = "Copied. Paste it anywhere."; }
+  catch { $("r-toast").textContent = `${text}\n${url}`; }
 };
 
 // No server, so the reminder is a calendar event: it repeats daily at the time the player just played.
