@@ -327,6 +327,7 @@
       <div class="row" style="width:100%">
         <button class="btn primary" id="r-share">Copy result</button>
         <button class="btn ghost" id="r-next">Practice dive</button>
+        <button class="btn ghost" id="r-remind">Add a daily reminder</button>
       </div>
       <p class="toast" id="r-toast" role="status"></p>
       <div class="review" id="r-review"></div>
@@ -529,23 +530,54 @@ function load() {
 function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
 
 // ================= dates =================
-const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const dayLabel = (d = new Date()) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+// Days run on UTC, so every diver in the world plays dive #N at the same moment.
+const dayKey = (d = new Date()) => d.toISOString().slice(0, 10);
+const dayLabel = (d = new Date()) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const DAY0 = Date.UTC(2026, 10, 19); // dive #1
-const dayNumber = () => { const d = new Date(); return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - DAY0) / 864e5) + 1; };
+const dayNumber = () => Math.floor((Date.now() - DAY0) / 864e5) + 1;
 function streakOf(s) {
   let n = 0; const d = new Date();
-  if (!s.days[dayKey(d)]) d.setDate(d.getDate() - 1);
-  while (s.days[dayKey(d)]) { n++; d.setDate(d.getDate() - 1); }
+  if (!s.days[dayKey(d)]) d.setUTCDate(d.getUTCDate() - 1);
+  while (s.days[dayKey(d)]) { n++; d.setUTCDate(d.getUTCDate() - 1); }
   return n;
 }
+function untilNextDive() {
+  const d = new Date(), m = Math.ceil((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - d) / 6e4);
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+// Weekday themes (UTC): four of the ten puzzles are the focus type; Sunday is harder throughout.
+const THEMES = [
+  { name: "Deep Sunday", desc: "Harder puzzles all the way down.", boost: 2 },
+  { name: "Ranking Monday", focus: "ordering" },
+  { name: "True-or-false Tuesday", focus: "boolean" },
+  { name: "Pattern Wednesday", focus: "pattern" },
+  { name: "If–then Thursday", focus: "conditional" },
+  { name: "Liar Island Friday", focus: "knights" },
+  { name: "All & some Saturday", focus: "syllogism" },
+];
+const themeOf = () => THEMES[new Date().getUTCDay()];
+
+// Hand-picked dailies: daily.json maps a UTC date to exactly 10 puzzles, e.g.
+// {"2026-11-24": [{"key": "ordering", "premise": "Ada is taller than Ben.", "ask": "Who is the shortest?",
+//   "options": ["Ada", "Ben"], "answer": 1, "explain": "Ada is taller, so Ben is shorter."}, ...]}
+// key is a puzzle type (ordering, boolean, pattern, conditional, knights, syllogism). A day without a valid entry uses the generator.
+const curated = {};
+const validSet = qs => Array.isArray(qs) && qs.length === 10 && qs.every(q => q && TYPES[q.key] && q.key !== "mixed" &&
+  typeof q.ask === "string" && Array.isArray(q.options) && q.options.length >= 2 && q.options.length <= 4 &&
+  q.options.every(o => typeof o === "string") && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length);
+const curatedReady = fetch("daily.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : {}).then(all => {
+  for (const [day, qs] of Object.entries(all))
+    if (validSet(qs)) curated[day] = qs.map(q => ({ premise: "", explain: "", ...q, type: TYPES[q.key].label, sym: q.key === "pattern" }));
+}).catch(() => {});
 
 // Same 10 puzzles for everyone on a given date; types cycle, difficulty ramps.
 function dailySet() {
-  const d = new Date();
-  rand = mulberry32(d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate());
-  const order = shuffle(REAL);
-  const qs = Array.from({ length: 10 }, (_, i) => { const key = order[i % order.length]; return { ...TYPES[key].gen(Math.floor(i * 0.7)), key }; });
+  if (curated[dayKey()]) return curated[dayKey()];
+  rand = mulberry32(+dayKey().replace(/-/g, ""));
+  const t = themeOf(), order = shuffle(REAL), keys = Array.from({ length: 10 }, (_, i) => order[i % order.length]);
+  if (t.focus) [1, 4, 7, 9].forEach(i => keys[i] = t.focus);
+  const qs = keys.map((key, i) => ({ ...TYPES[key].gen(Math.floor(i * 0.7) + (t.boost || 0)), key }));
   rand = Math.random;
   return qs;
 }
@@ -664,11 +696,13 @@ function renderSetup() {
   $("d-date").textContent = `#${dayNumber()} · ${dayLabel()}`;
   if (today) {
     $("d-title").textContent = `You reached ${metres(today.depth)}`;
-    $("d-desc").textContent = `${zoneOf(today.depth)} · streak ${streakOf(s)}. A new dive opens at midnight.`;
+    $("d-desc").textContent = `${zoneOf(today.depth)} · streak ${streakOf(s)}. Next dive in ${untilNextDive()}.`;
     $("d-play").textContent = "See today's dive"; $("d-play").classList.add("done");
   } else {
-    $("d-title").textContent = "Today's 10 puzzles";
-    $("d-desc").textContent = "Same set for every diver today. One attempt counts.";
+    const t = themeOf(), hand = curated[dayKey()];
+    $("d-title").textContent = hand ? "Today's hand-picked dive" : t.name;
+    $("d-desc").textContent = (hand ? "" : (t.desc || `More ${TYPES[t.focus].label} puzzles than usual.`) + " ")
+      + "Same 10 puzzles for every diver. One attempt counts.";
     $("d-play").textContent = "Start the dive"; $("d-play").classList.remove("done");
   }
 }
@@ -706,7 +740,7 @@ function renderQ() {
   $("p-premise").hidden = !q.premise;
   $("p-ask").textContent = q.ask;
   const box = $("p-answers"); box.innerHTML = "";
-  box.className = "answers" + (q.options.length === 3 ? " one" : "") + (q.type === "Pattern" ? " sym" : "");
+  box.className = "answers" + (q.options.length === 3 ? " one" : "") + (q.key === "pattern" ? " sym" : "");
   q.options.forEach((o, i) => {
     const b = document.createElement("button");
     b.className = "ans"; b.innerHTML = `<kbd>${i + 1}</kbd>`; b.append(o);
@@ -767,7 +801,7 @@ function renderResult(rec, run) {
   $("r-zone").textContent = zoneOf(rec.depth);
   $("r-title").textContent = daily ? `Daily dive #${dayNumber()}` : "Practice dive";
   $("r-sub").textContent = (passed ? `Deepest sighting: ${passed[1]} ${passed[2]}. ` : "You barely got your fins wet. ")
-    + (daily ? "A new dive opens at midnight." : "Practice dives don't count toward your streak.");
+    + (daily ? `Next dive in ${untilNextDive()}.` : "Practice dives don't count toward your streak.");
   $("r-squares").textContent = rec.marks.map(m => SQ[m]).join("");
   $("r-time").textContent = fmt(rec.time);
   $("r-acc").textContent = `${rec.correct}/${n}`;
@@ -776,7 +810,7 @@ function renderResult(rec, run) {
   const st = streakOf(s);
   $("r-streak-num").textContent = `${st} day${st === 1 ? "" : "s"}`;
   $("r-streak-text").textContent = st > 1 ? "Keep diving every day" : "Streak started. Dive again tomorrow";
-  $("r-share").hidden = !daily;
+  $("r-share").hidden = $("r-remind").hidden = !daily;
   $("r-next").textContent = daily ? "Practice dive" : "Back to the boat";
   $("r-toast").textContent = "";
   const misses = run ? run.qs.map((q, i) => ({ q, r: run.results[i] })).filter(x => x.r && !x.r.ok) : [];
@@ -807,6 +841,20 @@ $("r-share").onclick = async () => {
   catch { $("r-toast").textContent = text; }
 };
 
+// No server, so the reminder is a calendar event: it repeats daily at the time the player just played.
+$("r-remind").onclick = () => {
+  const d = new Date(Date.now() + 864e5), p = n => String(n).padStart(2, "0");
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//LogicSprinter//EN", "BEGIN:VEVENT",
+    `UID:logicsprinter-daily-${Date.now()}`, `DTSTAMP:${new Date().toISOString().replace(/[-:]|\.\d+/g, "")}`,
+    `DTSTART:${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`,
+    "DURATION:PT10M", "RRULE:FREQ=DAILY", "SUMMARY:Logic Sprinter daily dive", `URL:${location.href.split("#")[0]}`,
+    "BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Today's dive is open", "TRIGGER:PT0M", "END:VALARM",
+    "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" })); a.download = "logic-sprinter-daily.ics"; a.click();
+  $("r-toast").textContent = "Open the downloaded file to add it to your calendar.";
+};
+
 // ================= logbook =================
 function renderStats() {
   const s = load(), days = Object.keys(s.days).sort().reverse();
@@ -833,7 +881,7 @@ $("reset").onclick = askReset;
 
 // ================= wiring =================
 const inRun = () => G && !$("v-play").hidden;
-$("d-play").onclick = () => { const rec = load().days[dayKey()]; rec ? renderResult(rec, null) : startRun("daily"); };
+$("d-play").onclick = async () => { await curatedReady; const rec = load().days[dayKey()]; rec ? renderResult(rec, null) : startRun("daily"); };
 $("practice").onclick = () => startRun("practice");
 $("p-quit").onclick = () => {
   if (G.mode === "daily") {   // a daily can't be retried, so ending it takes a second tap
@@ -855,6 +903,9 @@ document.addEventListener("keydown", e => {
   const n = parseInt(e.key, 10);
   if (n >= 1 && n <= G.qs[G.i].options.length) answer(n - 1);
 });
+// The countdown ticks, and the banner flips to the new dive when the day turns.
+setInterval(() => { if (!$("v-setup").hidden) renderSetup(); }, 30000);
+curatedReady.then(() => { if (!$("v-setup").hidden) renderSetup(); });
 renderSetup();
 </script>
 </body>
