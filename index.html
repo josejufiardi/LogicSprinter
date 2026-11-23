@@ -237,7 +237,7 @@
     <div class="intro">
       <span class="pill">Daily logic dive</span>
       <h1>How deep can you reason?</h1>
-      <p class="lede">Every right answer sends your diver down. Answer fast to sink further. Get one wrong and you're tangled in kelp until you solve the next.</p>
+      <p class="lede">Every right answer sends your diver down. Answer fast to sink further, and keep a streak going to multiply every drop. Get one wrong and you're tangled in kelp.</p>
     </div>
 
     <div class="card">
@@ -281,7 +281,7 @@
         </div>
         <div class="gauge">
           <div><div class="z" id="g-zone">Sunlight zone</div><div class="d" id="g-depth" aria-live="polite">0<small>m</small></div></div>
-          <div class="power"><div class="lbl">Next dive</div><div class="val" id="g-power">+120 m</div><div class="meter"><i id="g-meter" style="width:100%"></i></div></div>
+          <div class="power"><div class="lbl" id="g-combo">Next dive</div><div class="val" id="g-power">+250 m</div><div class="meter"><i id="g-meter" style="width:100%"></i></div></div>
         </div>
       </div>
 
@@ -298,7 +298,7 @@
           <p class="premise" id="p-premise"></p>
           <p class="ask" id="p-ask"></p>
           <div class="answers" id="p-answers"></div>
-          <p class="hint">Keys 1–4 answer · under 5s = +120 m, under 10s = +80 m, slower = +40 m</p>
+          <p class="hint">Keys 1–4 answer · under 5s = +250 m, under 10s = +150 m, slower = +80 m · each right answer in a row adds ×0.5, up to ×3</p>
         </div>
       </div>
     </div>
@@ -558,10 +558,14 @@ function practiceSet(type, level) {
 
 // ================= the dive =================
 const SCALE = 0.9;                       // px per metre on the shaft
-const GAINS = [[5, 120, 3], [10, 80, 2], [Infinity, 40, 1]];   // [seconds under, metres, mark]
-const ZONES = [[0, "Sunlight zone"], [200, "Twilight zone"], [1000, "Midnight zone"]];
+const GAINS = [[5, 250, 3], [10, 150, 2], [Infinity, 80, 1]];   // [seconds under, metres, mark]
+// Streak multiplier: x1, x1.5, x2 … up to x3. A perfect fast run reaches 6,250 m, the hadal zone.
+const comboOf = streak => Math.min(3, 1 + streak * 0.5);
+const ZONES = [[0, "Sunlight zone"], [200, "Twilight zone"], [1000, "Midnight zone"], [4000, "Abyssal zone"], [6000, "Hadal zone"]];
 const CREATURES = [[40, "🐠", "reef fish"], [120, "🐢", "sea turtle"], [170, "🐬", "dolphin"], [320, "🦈", "shark"],
-                   [560, "🦑", "squid"], [820, "🐙", "octopus"], [1080, "🐡", "pufferfish"], [1180, "🦐", "deep-sea shrimp"]];
+                   [560, "🦑", "squid"], [820, "🐙", "octopus"], [1080, "🐡", "pufferfish"], [1180, "🦐", "deep-sea shrimp"],
+                   [1800, "🐋", "sperm whale"], [2600, "🪼", "jellyfish"], [3400, "🦀", "spider crab"], [4300, "🦞", "deep-sea lobster"],
+                   [5200, "🐟", "snailfish"], [6100, "🚢", "lost shipwreck"]];
 const SEA_STOPS = [[0, [27, 162, 198]], [200, [12, 96, 140]], [600, [8, 52, 88]], [1000, [5, 26, 48]], [1200, [2, 10, 22]]];
 const zoneOf = m => ZONES.filter(z => m >= z[0]).pop()[1];
 const gainFor = sec => GAINS.find(g => sec < g[0]);
@@ -594,7 +598,7 @@ document.querySelectorAll(".diver-slot").forEach(el => {
 function buildRuler() {
   const r = $("ruler"); let h = "";
   h += `<div class="sky" style="top:-240px;height:240px"></div><div class="surface" style="top:-7px"></div>`;
-  for (let m = 100; m <= 1400; m += 100) h += `<div class="mark" style="top:${m * SCALE}px"><span>${m} m</span></div>`;
+  for (let m = 100; m <= 7000; m += m < 1000 ? 100 : 500) h += `<div class="mark" style="top:${m * SCALE}px"><span>${m} m</span></div>`;
   ZONES.forEach(([m, name]) => h += `<div class="zone" style="top:${m * SCALE + 6}px">${name}</div>`);
   CREATURES.forEach(([m, e], i) => h += `<div class="creature" style="top:${m * SCALE}px;${i % 2 ? "right:22%" : "left:18%"};animation-delay:-${i * 1.3}s">${e}</div>`);
   r.innerHTML = h;
@@ -672,7 +676,7 @@ function renderSetup() {
 // ================= game loop =================
 let G = null, tick = null, bubbler = null;
 function startRun(mode) {
-  G = { mode, day: dayKey(), qs: mode === "daily" ? dailySet() : practiceSet(sel.type, sel.diff), i: 0, results: [], penalty: 0, depth: 0, stuck: false, start: performance.now(), locked: false };
+  G = { mode, day: dayKey(), qs: mode === "daily" ? dailySet() : practiceSet(sel.type, sel.diff), i: 0, results: [], penalty: 0, depth: 0, streak: 0, stuck: false, start: performance.now(), locked: false };
   saveDaily();   // the attempt counts from the first second: leaving or reloading can't restart it
   $("p-quit").textContent = "Surface";
   show("v-play");
@@ -687,7 +691,8 @@ function onTick() {
   $("p-timer").textContent = fmt(elapsed());
   if (G.locked) return;
   const age = (performance.now() - G.qStart) / 1000, g = gainFor(age);
-  $("g-power").textContent = `+${g[1]} m`;
+  $("g-power").textContent = `+${Math.round(g[1] * comboOf(G.streak))} m`;
+  $("g-combo").textContent = G.streak ? `Next dive · ×${comboOf(G.streak)}` : "Next dive";
   $("g-meter").style.width = `${Math.max(0, 1 - age / 10) * 100}%`;
 }
 
@@ -718,14 +723,15 @@ function answer(i) {
   btns[q.answer].classList.add("right");
   let mark = 0;
   if (ok) {
-    const [, gain, m] = gainFor(secs); mark = m;
-    const wasStuck = G.stuck;
+    const [, base, m] = gainFor(secs); mark = m;
+    const wasStuck = G.stuck, mult = comboOf(G.streak), gain = Math.round(base * mult);
+    G.streak++;
     G.stuck = false; $("sea").classList.remove("stuck");
     G.depth += gain; renderDepth(); bubble(4);
-    floatText(wasStuck ? `Free! +${gain} m` : `+${gain} m`);
+    floatText((wasStuck ? "Free! " : "") + `+${gain.toLocaleString()} m` + (mult > 1 ? ` ×${mult}` : ""));
   } else {
     btns[i].classList.add("wrong");
-    G.penalty += 5; G.stuck = true; $("sea").classList.add("stuck"); bubble(5);
+    G.penalty += 5; G.stuck = true; G.streak = 0; $("sea").classList.add("stuck"); bubble(5);
     floatText("Stuck · +5s", "var(--bad)");
   }
   G.results.push({ ok, mark, picked: q.options[i], secs });
