@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Logic Sprinter</title>
+<meta name="description" content="A daily dive of 10 logic puzzles. Answer fast to sink deeper; a wrong answer tangles you in kelp.">
+<meta name="theme-color" content="#03101c">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&display=swap">
 <style>
   /* Layout: one centred column; the play screen splits into a dive shaft (left / top on phones) and the puzzle card.
@@ -37,6 +40,10 @@
   body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: rgba(3, 16, 28, .85); }
   header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10; background: rgba(3, 16, 28, .72); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
   header .wrap { height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brand, .tab, .quit, .link, .confirm .btn { min-height: 44px; }
+  header.running nav { opacity: .35; pointer-events: none; }
+  .btn, .ans, .opt, .tab, .daily .go { transition: transform .12s ease, background-color .15s, border-color .15s; }
+  .btn:active, .ans:active, .opt:active, .daily .go:active { transform: scale(.97); }
   .brand { display: flex; align-items: center; gap: 10px; font: 800 19px var(--display); letter-spacing: -0.02em; background: none; border: 0; padding: 0; }
   .brand b { color: var(--glass); font-weight: 800; }
   .logo { width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(160deg, #1d7fa8, #0a3352); border: 1px solid #2a6a90; display: grid; place-items: center; overflow: hidden; }
@@ -94,7 +101,12 @@
   .play { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 16px; align-items: start; }
   @media (max-width: 720px) { .play { grid-template-columns: 1fr; } }
   .sea { position: relative; height: 520px; border-radius: 22px; overflow: hidden; border: 1px solid var(--line); background: #0d5f8c; transition: background-color .8s ease; isolation: isolate; }
-  @media (max-width: 720px) { .sea { height: 270px; } .diver-wrap { top: 16%; width: 44px; margin-left: -22px; } .gauge .d { font-size: 22px; } }
+  /* phones: a short sea strip so the question and all answers fit on one screen without scrolling */
+  @media (max-width: 720px) {
+    #v-play { margin-top: -16px; }
+    .sea { height: 168px; } .sea .diver-wrap { top: 6px; width: 34px; margin-left: -17px; }
+    .gauge { padding: 6px 10px; } .gauge .d { font-size: 20px; }
+  }
   .rays { position: absolute; inset: 0; background: repeating-linear-gradient(105deg, rgba(255,255,255,.10) 0 18px, transparent 18px 60px); mask: linear-gradient(180deg, #000 0%, transparent 75%); transition: opacity .8s; pointer-events: none; }
   .ruler { position: absolute; left: 0; right: 0; top: 0; transition: transform .9s cubic-bezier(.3, .7, .2, 1); }
   .mark { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255, 255, 255, .14); }
@@ -142,7 +154,7 @@
   .quit { background: none; border: 0; color: var(--muted); font-size: 13px; font-weight: 600; padding: 6px 10px; border-radius: 10px; }
   .quit:hover { color: var(--bad); background: var(--bad-soft); }
   .qcard { text-align: center; gap: 18px; min-height: 360px; justify-content: center; }
-  @media (max-width: 720px) { .qcard { min-height: 0; } }
+  @media (max-width: 720px) { .qcard { min-height: 0; gap: 12px; padding: 16px; } .premise { font-size: 16px; } .hint { display: none; } }
   .qtype { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--faint); }
   .premise { font-size: 17px; font-weight: 500; white-space: pre-line; color: var(--ink-2); margin: 0; }
   .premise.sym { font-family: var(--mono); font-size: clamp(22px, 5.5vw, 32px); font-weight: 700; color: var(--ink); }
@@ -150,13 +162,12 @@
   .answers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
   .answers.one { grid-template-columns: 1fr; }
   .answers.sym .ans { font-size: 26px; padding: 9px 12px; }
-  .ans { border: 1.5px solid var(--line); background: rgba(3, 16, 28, .4); border-radius: 13px; padding: 13px 12px; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
+  .ans { min-height: 48px; border: 1.5px solid var(--line); background: rgba(3, 16, 28, .4); border-radius: 13px; padding: 10px 12px; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
   .ans kbd { font: 600 11px var(--mono); color: var(--faint); }
   .ans:hover { border-color: var(--glass); }
   .ans.right { border-color: var(--good); background: rgba(63, 224, 160, .14); color: var(--good); }
   .ans.wrong { border-color: var(--bad); background: var(--bad-soft); color: var(--bad); }
   .hint { font-size: 12px; color: var(--faint); margin: 0; }
-  @media (max-width: 420px) { .answers { grid-template-columns: 1fr; } }
 
   /* ---------- results ---------- */
   .result { text-align: center; align-items: center; overflow: hidden; position: relative; }
@@ -268,7 +279,7 @@
           <span class="diver-slot" data-anim="1"></span>
         </div>
         <div class="gauge">
-          <div><div class="z" id="g-zone">Sunlight zone</div><div class="d" id="g-depth">0<small>m</small></div></div>
+          <div><div class="z" id="g-zone">Sunlight zone</div><div class="d" id="g-depth" aria-live="polite">0<small>m</small></div></div>
           <div class="power"><div class="lbl">Next dive</div><div class="val" id="g-power">+120 m</div><div class="meter"><i id="g-meter" style="width:100%"></i></div></div>
         </div>
       </div>
@@ -611,6 +622,7 @@ const $ = id => document.getElementById(id);
 const VIEWS = ["v-setup", "v-play", "v-result", "v-stats"];
 function show(v) {
   VIEWS.forEach(id => $(id).hidden = id !== v);
+  document.querySelector("header").classList.toggle("running", v === "v-play");
   $("tab-play").classList.toggle("on", v !== "v-stats");
   $("tab-stats").classList.toggle("on", v === "v-stats");
   if (v === "v-setup") renderSetup();
@@ -652,7 +664,9 @@ function renderSetup() {
 // ================= game loop =================
 let G = null, tick = null, bubbler = null;
 function startRun(mode) {
-  G = { mode, qs: mode === "daily" ? dailySet() : practiceSet(sel.type, sel.diff), i: 0, results: [], penalty: 0, depth: 0, stuck: false, start: performance.now(), locked: false };
+  G = { mode, day: dayKey(), qs: mode === "daily" ? dailySet() : practiceSet(sel.type, sel.diff), i: 0, results: [], penalty: 0, depth: 0, stuck: false, start: performance.now(), locked: false };
+  saveDaily();   // the attempt counts from the first second: leaving or reloading can't restart it
+  $("p-quit").textContent = "Surface";
   show("v-play");
   $("sea").classList.remove("stuck");
   buildRuler(); renderDepth(); renderQ();
@@ -707,18 +721,30 @@ function answer(i) {
     floatText("Stuck · +5s", "var(--bad)");
   }
   G.results.push({ ok, mark, picked: q.options[i], secs });
-  setTimeout(() => { G.i++; G.i < G.qs.length ? renderQ() : finish(); }, ok ? 450 : 1100);
+  saveDaily();
+  const run = G;
+  setTimeout(() => { if (G !== run || run.done) return; G.i++; G.i < G.qs.length ? renderQ() : finish(); }, ok ? 450 : 1100);
+}
+
+// Unanswered questions count as tangled, so a run left early still has 10 marks.
+function runRec() {
+  const marks = G.results.map(r => r.mark);
+  while (marks.length < G.qs.length) marks.push(0);
+  return { time: elapsed(), correct: G.results.filter(r => r.ok).length, depth: G.depth, marks };
+}
+function saveDaily() {
+  if (G.mode !== "daily") return;
+  const s = load(); s.days[G.day] = runRec(); save(s);
 }
 
 function finish() {
   clearInterval(tick); clearInterval(bubbler);
-  const time = elapsed(), correct = G.results.filter(r => r.ok).length;
-  const rec = { time, correct, depth: G.depth, marks: G.results.map(r => r.mark) };
-  const s = load();
-  G.qs.forEach((q, i) => { const k = s.skills[q.key] || (s.skills[q.key] = { a: 0, c: 0 }); k.a++; if (G.results[i].ok) k.c++; });
-  if (G.mode === "daily" && !s.days[dayKey()]) s.days[dayKey()] = rec;
+  G.done = true;
+  const rec = runRec(), s = load();
+  G.results.forEach((r, i) => { const k = s.skills[G.qs[i].key] || (s.skills[G.qs[i].key] = { a: 0, c: 0 }); k.a++; if (r.ok) k.c++; });
+  if (G.mode === "daily") s.days[G.day] = rec;
   save(s);
-  renderResult(G.mode === "daily" ? s.days[dayKey()] : rec, G);
+  renderResult(rec, G);
 }
 
 function renderResult(rec, run) {
@@ -739,7 +765,7 @@ function renderResult(rec, run) {
   $("r-share").hidden = !daily;
   $("r-next").textContent = daily ? "Practice dive" : "Back to the boat";
   $("r-toast").textContent = "";
-  const misses = run ? run.qs.map((q, i) => ({ q, r: run.results[i] })).filter(x => !x.r.ok) : [];
+  const misses = run ? run.qs.map((q, i) => ({ q, r: run.results[i] })).filter(x => x.r && !x.r.ok) : [];
   $("r-review").hidden = !run;
   $("r-review").innerHTML = !misses.length ? `<p class="lede">No tangles. Clean dive.</p>` :
     `<p class="label">Where you got tangled</p>` + misses.map(({ q, r }) => `
@@ -795,13 +821,23 @@ $("reset").onclick = askReset;
 const inRun = () => G && !$("v-play").hidden;
 $("d-play").onclick = () => { const rec = load().days[dayKey()]; rec ? renderResult(rec, null) : startRun("daily"); };
 $("practice").onclick = () => startRun("practice");
-$("p-quit").onclick = () => { clearInterval(tick); clearInterval(bubbler); G = null; show("v-setup"); };
+$("p-quit").onclick = () => {
+  if (G.mode === "daily") {   // a daily can't be retried, so ending it takes a second tap
+    if (!G.quitArmed) {
+      G.quitArmed = true; $("p-quit").textContent = "End daily?";
+      const run = G; setTimeout(() => { if (G === run) { run.quitArmed = false; $("p-quit").textContent = "Surface"; } }, 3000);
+      return;
+    }
+    return finish();
+  }
+  clearInterval(tick); clearInterval(bubbler); G = null; show("v-setup");
+};
 $("r-next").onclick = () => show("v-setup");
 $("s-play").onclick = $("home").onclick = $("tab-play").onclick = () => { if (!inRun()) show("v-setup"); };
 $("tab-stats").onclick = () => { if (!inRun()) show("v-stats"); };
 addEventListener("resize", () => { if (inRun()) renderDepth(); });
 document.addEventListener("keydown", e => {
-  if (!inRun()) return;
+  if (!inRun() || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
   const n = parseInt(e.key, 10);
   if (n >= 1 && n <= G.qs[G.i].options.length) answer(n - 1);
 });
